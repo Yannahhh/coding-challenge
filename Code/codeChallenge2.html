@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>LALA : Challenge 2 </title>
+    <!-- <link rel='stylesheet' href='styles.css'>  -->
+    <script src="https://unpkg.com/d3@5.6.0/dist/d3.min.js"></script>
+  </head>
+  <body>
+    <svg width='1200' height='700'>
+      <p style="position:absolute; top:8px; left: 330px">
+        <input type='radio' name='minORmax' value="0" checked="checked"> min_temperature
+        <input type='radio' name='minORmax' value="1"> max_temperature
+      </p>
+    </svg>
+    <script>
+      const svg = d3.select('svg');
+      const width  = +svg.attr('width');
+      const height = +svg.attr('height');
+      const margin = {top: 100, bottom: 40, left: 150, right:40};
+      const innerHeight = height - margin.top - margin.bottom;
+      const innerWidth= width - margin.left - margin.right;
+      
+      const years = d3.range(2007, 2018);
+      const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      const title = "Daily Temperature";
+
+
+
+      var minORmax = document.getElementsByName('minORmax');
+
+      //定义颜色
+      const yellowColor = d3.rgb('#fffeb3');
+      const redColor = d3.rgb('#e41a1c');
+      var computeColor2 = d3.interpolate(yellowColor, redColor);
+      var linearColor = d3.scaleLinear()
+                  .domain([0, 40])
+                  .range([0, 1]);
+      
+     d3.csv('https://vizhub.com/Yannahhh/datasets/temperature_daily_1.csv')
+        .then(data => {
+       		 data.forEach(d => {
+          	d.max_temperature = +d.max_temperature;
+            d.min_temperature = +d.min_temperature;
+          });
+        render(data);
+     });
+      
+      var minAllT =0, maxAllT =40;
+      var render = data => {
+        
+
+        //创建cellData
+        const cellData =[];
+
+        
+        for(let i = 0; i < 11; i++){
+          for(let j = 0; j < 12; j++){
+            const singleCell = {
+              maxT:minAllT,
+              minT:maxAllT,
+              year:2007+i,
+              month:1+j,
+              monthData:[]
+            }
+            cellData.push(singleCell);
+          }
+        }
+
+        
+        //处理得到每个数据的
+        for(let i = 0; i < data.length; i++)
+        {
+          const date  = data[i].date.split('-');
+          const year  = +date[0];
+          const month = +date[1];
+          if(year<2007) continue;
+        
+          if (cellData[(year - 2007) * 12 + (month - 1)].maxT < data[i].max_temperature) {
+              cellData[(year - 2007) * 12 + (month - 1)].maxT = data[i].max_temperature;
+          }
+          if (cellData[(year - 2007) * 12 + (month - 1)].minT > data[i].min_temperature) {
+              cellData[(year - 2007) * 12 + (month - 1)].minT = data[i].min_temperature;
+          }
+           cellData[(year - 2007) * 12 + (month - 1)].monthData.push(data[i]);
+        } 
+        // 有一些月份没数据，清空
+        for(let iyear = +data[data.length-1].date.split('-')[0]; iyear < 2018 ; iyear++){
+          for(let jmonth = +data[data.length-1].date.split('-')[1] + 1; jmonth < 13 ; jmonth++){
+             cellData[(iyear-2007)*12 + (jmonth-1)].maxT = null;
+             cellData[(iyear-2007)*12 + (jmonth-1)].minT = null;
+          }
+        }
+        // console.log(cellData);
+        // console.log(cellData[0].monthData);
+        
+        const axisG = svg.append('g')
+        	.attr('transform',`translate(${margin.left},${margin.top})`);;
+        //创建x，y轴
+        //1)创建值到轴映射函数
+        const xScale = d3.scaleBand()
+        			.domain(years)
+        			.range([0,innerWidth])
+        			.padding(0.1);
+         const yScale = d3.scaleBand()
+        			.domain(months)
+        			.range([0,innerHeight])
+         			.padding(0.1);
+        //2)定义坐标轴
+        const xAxis = d3.axisTop(xScale);
+        const yAxis = d3.axisLeft(yScale);
+        //调用定义的坐标轴
+        const xAxisG = axisG.append('g').call(xAxis);//.attr('transform','translate(0,-5)');
+        const yAxisG = axisG.append('g').call(yAxis);
+        //加一些title
+        axisG.append('text')
+            .attr('class', 'title')
+            .attr('y', -40)
+            .attr('x',innerWidth/2)
+            .text(title)
+            .style('text-anchor', 'middle')
+            .style('font-size','2em');
+
+        //去掉不必要的线
+       // axisG.selectAll('.tick line').remove();
+        
+        
+        //画出每个方格
+        const rectG = axisG.selectAll('rect').data(cellData)
+        							.enter().append('rect')
+                      .attr('width',xScale.bandwidth())
+                      .attr('height',yScale.bandwidth())
+                      .attr('x', d => xScale(+d.year))
+                      .attr('y', d => yScale(months[+d.month-1]))
+                      .attr('fill',d => computeColor2(linearColor(d.minT)));
+                     // .attr('opacity', d => computeColor2(linearColor(d.minT)));
+
+
+        //每次点击出现的浮动框
+        const tooltip = d3.select('body')
+          .append('p')
+          .attr('class', 'tooltip')
+          .style('position', 'absolute')
+          .style('z-index', '10')
+          .text('a simple tooltip')
+          .style('background-color','white')
+          .style('padding','5px 10px 5px 10px')
+          .style('display','block')
+          .style('opacity','0');
+        //鼠标在rect上面的时候。
+        rectG.on('mousemove', d => {
+                  tooltip.style('visibility', 'visible');
+                  tooltip.transition().duration(200)
+                      .style('opacity', 0.9);
+
+                  var tooltipText = 'date: ' + d.year + '-' + (d.month<10 ?  '0' + d.month : d.month);
+
+                  tooltipText = tooltipText + ', max: ' + d.maxT + ', min: ' + d.minT;
+                  tooltip.html(tooltipText)
+                      .style('left', (d3.event.pageX) + 20 + 'px')
+                      .style('top', (d3.event.pageY) - 10 + 'px');
+              })
+              .on('mouseout', d => {
+                  tooltip.transition().duration(500)
+                      .style('opacity', 0.0);
+            });
+     
+
+        minORmax[0].onclick=function(){
+            rectG.attr('fill',d => computeColor2(linearColor(d.minT)));
+        };
+        minORmax[1].onclick=function(){
+            var checkValue = minORmax[1].value;
+            rectG.attr('fill',d => computeColor2(linearColor(d.maxT)));
+        };
+        
+
+
+        //关于小图形；
+        const tLineG = axisG.append('g');
+        //1）每个cell当作一个g进行画图，其起点就是每个cell右上角的位置；
+        const lineCell = tLineG.selectAll('g')
+                            .data(cellData)
+                            .enter().append('g')
+                            .attr('transform', d => {
+                                 xposition = xScale(d.year);
+                                 yposition = yScale(months[d.month-1]);
+                                 return 'translate('+xposition+','+yposition+')';
+                            });
+                            //.attr('transform', `translate(${d=>xScale(d.year)},${d=>yScale(months[d.month-1])})`);
+       
+        const lineCellMax = lineCell.append('g').attr('name','lineCellMax');
+        const lineCellMin = lineCell.append('g').attr('name','lineCellMin');
+        //2）定义x,y的值的映射和范围
+        const xMap = d3.scaleLinear()
+                      .domain([1,31])
+                      .range([0,xScale.bandwidth()]);
+        const yMap = d3.scaleLinear()
+                      .domain([minAllT,maxAllT])
+                      .range([yScale.bandwidth(),0]);
+
+        //3）将天数和最低温度相关line得到，并把这些line进行拼接成为path
+        const minTLine = d3.line()
+                            .x(d => xMap(+d.date.split('-')[2]))
+                            .y(d => yMap(+d.min_temperature));
+
+        const minTPath = lineCellMin.selectAll('path')
+                            .data(d => [d.monthData]) //为什么要加[]？？？？？
+                            .enter().append('path')
+                            .attr('d',minTLine)
+                            .attr('fill','none')
+                            .attr('stroke','#aabbd0')
+                            .attr('stroke-width',2);
+
+       //4）将天数和max温度相关line得到，并把这些line进行拼接成为path
+        const maxTLine = d3.line()
+                            .x(d => xMap(+d.date.split('-')[2]))
+                            .y(d => yMap(+d.max_temperature));
+        const maxTPatg = lineCellMax.selectAll('path')
+                            .data(d => [d.monthData])
+                            .enter().append('path')
+                            .attr('d',maxTLine)
+                            .attr('fill','none')
+                            .attr('stroke','green')
+                            .attr('stroke-width',2);
+
+        
+      };//render结束
+
+      console.log(minAllT);
+      
+      //颜色和值的图例
+      
+      const gradientLegendGroup = svg.append('g');
+      const linearGradient = gradientLegendGroup.append('defs').append('linearGradient')
+      .attr('id','legend')
+      .attr('x1','0%')
+      .attr('y1','0%')
+      .attr('x2','100%')
+      .attr('y2','0%');
+      
+      const stop1 = linearGradient.append('stop')
+      .attr('offset','0%')
+      .style('stop-color',yellowColor)
+      .attr('stop-opacity',0.15);
+      const stop2 = linearGradient.append('stop')
+      .attr('offset','100%')
+      .style('stop-color',redColor)
+      .attr('stop-opacity',1);
+      
+      const colorRect = gradientLegendGroup.append('rect')
+      .attr('x',10)
+      .attr('y',10)
+      .attr('width',300)
+      .attr('height',20)
+      .attr('stroke','black')
+      .style("fill","url(#" + linearGradient.attr("id") + ")");
+
+
+      const gradientLegendScale = d3.scaleLinear()
+                .domain([minAllT, maxAllT])
+                .range([0, 300]);
+      const gradientLegendAxis = d3.axisBottom()
+          .scale(gradientLegendScale)
+          .ticks(6);
+      gradientLegendGroup.append('g')
+          .attr('class', 'gradient legend axis')
+          .attr('transform', 'translate(9.5, 29)')
+          .call(gradientLegendAxis)
+          .append('text')
+          //.attr('transform', 'rotate(-90)')
+          .attr('y', 0)
+          .attr('dy', '.71em')
+          .style('text-anchor', 'end')
+          .text('axis title');
+
+
+
+      
+
+
+    
+    </script>
+  </body>
+</html>
