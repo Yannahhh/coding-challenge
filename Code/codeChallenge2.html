@@ -201,7 +201,8 @@
         //3）将天数和最低温度相关line得到，并把这些line进行拼接成为path
         const minTLine = d3.line()
                             .x(d => xMap(+d.date.split('-')[2]))
-                            .y(d => yMap(+d.min_temperature));
+                            .y(d => yMap(+d.min_temperature))
+                            .curve(d3.curveBasis);//利用基本的插值让整体曲线光滑;
 
         const minTPath = lineCellMin.selectAll('path')
                             .data(d => [d.monthData]) //为什么要加[]？？？？？
@@ -209,7 +210,8 @@
                             .attr('d',minTLine)
                             .attr('fill','none')
                             .attr('stroke','#aabbd0')
-                            .attr('stroke-width',2);
+                            .attr('stroke-width',2)
+                            .attr('stroke-linejoin','round');//连接处变得光滑;
 
        //4）将天数和max温度相关line得到，并把这些line进行拼接成为path
         const maxTLine = d3.line()
