@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+</html>
+<meta charset="utf-8">
+<style type="text/css">
+  .node,.matrix{
+    position: absolute;
+    width: 50%;
+    height: 100%;
+  }
+</style>
+<body>
+      <svg width='1000' height='800' ></svg>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script>
+
+     //console.log('1',context)
+
+const svg = d3.select('svg');
+const width  = +svg.attr('width');
+const height = +svg.attr('height');
+const margin = {top: 120, bottom: 50, left: 120, right:50};
+const innerHeight = 500 - margin.top - margin.bottom;
+const innerWidth= 500 - margin.left - margin.right;
+const title = "Daily Temperature";
+
+
+var simulation = d3.forceSimulation()
+    .force("link", d3.forceLink().id(d => d.id )) //creat a fixed distancee between connected elements
+    .force("charge", d3.forceManyBody()) //makes the elements repel(negative) or attract(positive) each other, default is -30
+    .force("center", d3.forceCenter(width / 2, height / 2));//ttracts the elements towards a centre point
+    //the first argument is a user defined id, the second id the function
+
+  d3.json("coauthor.json", function(error, graph) {
+    if (error) throw error;
+    
+
+    //根据CSE筛选得到想要的数据
+
+    var nodeData = graph.nodes.filter( d => {
+        return d.dept === 'CSE';
+    });
+
+    var edgeData = graph.edges.filter( d => {
+        var sourceNode = false;
+        var targetNode = false;
+        for(let i = 0; i < nodeData.length; i++) {
+            if (nodeData[i].id === d.source) {
+                sourceNode = true;
+            }
+            if (nodeData[i].id === d.target) {
+                targetNode = true;
+            }
+        }
+        return sourceNode && targetNode;
+     });
+
+
+    var indexToId = [];
+    var fullname =[];
+    var idToIndex = []; 
+    var numOfNode = nodeData.length;
+
+   
+    //根据id进行排序
+    nodeData.sort(function(a, b) {
+          return a.id - b.id;
+    })
+   
+    //建立cellData,y轴表source，x轴表target,表示k个老师合作了多少文章。
+    var cellData = [];
+    var maxId = nodeData[numOfNode-1].id + 1;
+    var numOfCoauthors = Array(maxId).fill(0);
+
+    //定义node和link
+    //每个node都是一个circle
+    var network = svg.append('g').attr('transform',`translate(${-innerWidth+margin.left},${-margin.top})`);
+    var link = network.append('g')
+              .attr('class','link')
+              .selectAll('line')
+              .data(edgeData)
+              .enter().append('line');
+
+    var node = network//.append('div').attr('class','left')
+              .append('g')
+              .attr('class','node')
+              .selectAll('circle')
+              .data(nodeData)
+              .enter().append('circle')
+              .attr('r',d => numOfCoauthors[d.id]+1)
+              .attr('fill','red')
+              .attr('name',d => d.fullname);
+
+    //attr('transform',`translate(${margin.lfet},${margin.top}`);
+
+
+    //通过仿真模拟起添加了index-节点索引，节点当前位置x,y,还有节点当前速度vx,vy
+    simulation
+        .nodes(nodeData)
+        .on("tick", ticked);//每间隔tick就开始iteration
+
+    simulation.force("link")
+        .links(edgeData); //连接线
+
+    
+    var dragHandler =  d3.drag().subject(dragsubject)
+                        .on("start", dragstarted)
+                        .on("drag", dragged)
+                        .on("end", dragended);
+    dragHandler(node);//需要一个selection来执行drag操作，本项目是node
+
+   console.log(nodeData);
+    function ticked() {
+    //画点
+      node.attr('transform',d => `translate(${d.x},${d.y})`)
+
+      //画线
+      link.attr("x1", function(d) { return d.source.x; })
+                .attr("y1", function(d) { return d.source.y; })
+                .attr("x2", function(d) { return d.target.x; })
+                .attr("y2", function(d) { return d.target.y ; })
+                .attr('stroke-width',2)
+                .attr('stroke','#d0d0d0');
+      // .attr('source', d => [d.source.x, d.source.y])
+      //     .attr('target', d => [d.target.x, d.target.y])
+      //     .attr('stroke-width',2);
+    }
+
+    function dragsubject() {
+      return simulation.find(d3.event.x, d3.event.y);//除非是drag事件的（x,y)
+    }
+    
+
+   //定义表格
+    var matrix = svg//.append('div').attr('class','right')
+    .append('g').attr('class','matrix').attr('transform',`translate(${margin.left+width/2},${margin.top})`);;
+    console.log(edgeData)
+    for( let i = 0; i < numOfNode; i++)
+    {
+        for(let j = 0; j < numOfNode; j++){
+            const singleCell = {};
+            singleCell.x =  i;
+            singleCell.y =  j;
+            singleCell.publications = 0;
+            for(let k = 0; k < edgeData.length; k++){
+               //只遍历一次
+               if(i == 0 && j==0){
+                 numOfCoauthors[edgeData[k].source.id]++;//id到一个coauthor的程度
+                 numOfCoauthors[edgeData[k].target.id]++;
+               }
+               if(edgeData[k].source.index == i && edgeData[k].target.index==j || edgeData[k].source.index == j && edgeData[k].target.index==i)
+                 singleCell.publications += edgeData[k].publications.length;
+            }
+            cellData.push(singleCell);
+        }
+    }
+    //这里的numOfCoauthors才得到了值，所以设置属性
+    node.attr('r',d => numOfCoauthors[d.id]+1)
+    console.log("cellData")
+    console.log(edgeData)
+ 
+     //console.log(nodes);
+    for(let i = 0; i < numOfNode; i++)
+    {
+        fullname[i] = nodeData[i].fullname; 
+        // idToIndex[nodes[i].id] = i;
+        // indexToId[i] = nodes[i].id;
+        //idToFullName[nodes[i].id] = nodes[i].fullname;
+    }
+
+    //另外一种实现方法，一定程度上更加高效
+    // for( let i = 0; i < numOfNode; i++)
+    // {
+    //     for(let j = 0; j < numOfNode; j++){
+    //       const singleCell = {};
+    //       singleCell.x =  i;
+    //       singleCell.y =  j;
+    //       singleCell.publications = 0;
+    //       cellData.push(singleCell);
+    //     }
+    // }
+    
+    // for(let i = 0; i < edgeData.length; i++){
+    //     numOfCoauthors[edgeData[i].source]++;//id到一个coauthor的程度
+    //     numOfCoauthors[edgeData[i].target]++;
+
+    //     const sourceIndex = edgeData[i].source.index;
+    //     const targetIndex = edgeData[i].target.index;
+       
+    //     cellData[sourceIndex * numOfNode + targetIndex].x = sourceIndex;//坐标index
+    //     cellData[sourceIndex * numOfNode + targetIndex].y = targetIndex;
+    //     cellData[sourceIndex * numOfNode + targetIndex].publications = edgeData[i].publications.length; 
+    // }
+
+     
+  //   var displayName = fullname.slice(0,numOfDisplay);
+  //   //displayName[numOfDisplay]="linyann";
+
+  //    console.log('displayname',displayName);
+
+  //   //console.log(idToFullName)
+
+    //建立坐标轴
+    const axisG = matrix.append('g');
+    //创建x，y轴
+    //1)创建值到轴映射函数
+    //.log(nodes.fullname)
+    const xScale = d3.scaleBand()
+          .domain(fullname)
+          .range([0, innerWidth])
+          //.padding(0.1);
+     const yScale = d3.scaleBand()
+          .domain(fullname)
+          .range([0, innerHeight])
+          //.padding(0.05);
+    //2)定义坐标轴
+    const xAxis = d3.axisTop(xScale);
+    const yAxis = d3.axisLeft(yScale);
+    //调用定义的坐标轴
+    const xAxisG = axisG.append('g').call(xAxis)
+                  .selectAll('text')
+                  .attr('transform',`translate(${xScale.bandwidth()},-10) rotate(-90)`)
+                  .attr('text-anchor','start');
+                  //.selectAll('.tick line').remove();
+    const yAxisG = axisG.append('g').call(yAxis);
+    axisG.selectAll('.domain, .tick line')
+          .attr('stroke','#d9d9d9');
+    // 加一些title
+    // axisG.append('text')
+    //     .attr('class', 'title')
+    //     .attr('y', -100)
+    //     .attr('x',innerWidth/2)
+    //     .text(title)
+    //     .style('text-anchor', 'middle')
+    //     .style('font-size','2em');
+
+     // 画出每个方格
+     // 定义颜色
+    const colorOpacity = d3.scaleLinear()
+      .domain([0, 20])
+      .range([0.5,1]);
+    var whiteColor = d3.rgb('#fff');
+    var greenColor = d3.rgb('green');
+    var computeColor = d3.interpolate(whiteColor, greenColor);
+    var linearColor = d3.scaleLinear()
+            .domain([0, d3.max(edgeData,d=>d.publications.length)])
+            .range([0, 1])
+      //console.log(idToFullName);
+    const rectG = axisG.selectAll('rect').data(cellData)
+                  .enter().append('rect')
+                  .attr('width',xScale.bandwidth())
+                  .attr('height',yScale.bandwidth())
+                  .attr('x', d => xScale(fullname[d.x]))
+                  .attr('y', d => yScale(fullname[d.y]))
+                  .attr('fill', d => computeColor(linearColor(d.publications)))
+                  //.attr('fill',d => d.publications == 0 ?  '#eeeeee' : 'green')
+                  //.attr('opacity', d =>  d.publications == 0 ?  1 : colorOpacity(d.publications))
+                  .attr('stroke-width',1)
+                  .attr('stroke', d =>d.publications == 0 ? '#d9d9d9' : 'black')
+                  .attr('stroke-opacity', d =>d.publications == 0 ? 0.5 : 1);
+
+
+      //每次点击出现的浮动框
+      const tooltip = d3.select('body')
+          .append('p')
+          .attr('class', 'tooltip')
+          .style('position', 'absolute')
+          .style('z-index', '10')
+          .text('a simple tooltip')
+          .style('background-color','white')
+          .style('padding','5px 10px 5px 10px')
+          .style('display','block')
+          .style('opacity','0');
+        //鼠标在rect上面的时候。celldata
+        rectG.on('mousemove', d => {
+                  //tooltip.style('visibility', 'visible');
+                  tooltip.transition().duration(200)
+                      .style('opacity', 0.9);
+
+                  var tooltipText =  fullname[d.x] + ' and ' + fullname[d.y] +' : ' + d.publications ;
+                  tooltip.html(tooltipText)
+                      .style('left', (d3.event.pageX) + 20 + 'px')
+                      .style('top', (d3.event.pageY) - 10 + 'px');
+
+                let author1 = fullname[d.x];
+                let author2 = fullname[d.y];
+
+                node.filter( dd => (dd.fullname !== author1 && dd.fullname !== author2)).attr('opacity','0.2');
+                link.filter( dd => (dd.source.index == d.x && dd.target.index == d.y || dd.source.index == d.y && dd.target.index == d.x))
+                    .attr('stroke','red');
+
+                rectG.filter( dd => !(dd.x == d.x || dd.y == d.y)).attr('opacity', '0.2');
+
+              })
+              .on('mouseout', d => {
+                  tooltip.transition().duration(500)
+                      .style('opacity', 0.0);
+                  node.attr('opacity','1');
+                  link.attr('stroke','#d0d0d0');
+                  rectG.attr('opacity',1);
+                  //rectG.attr('opacity', d =>  d.publications == 0 ?  1 : colorOpacity(d.publications));
+            });
+              console.log('nodeData')
+        console.log(nodeData)
+
+        node.on('mousemove', d => {
+          tooltip.transition().duration(200)
+                      .style('opacity', 0.9);
+          var tooltipText =  d.fullname + ' have ' + numOfCoauthors[d.id] +' coauthors!';
+                  tooltip.html(tooltipText)
+                      .style('left', (d3.event.pageX) + 20 + 'px')
+                      .style('top', (d3.event.pageY) - 10 + 'px');
+          node.filter( dd=> dd.id!==d.id).attr('opacity',0.2);
+          link.filter( dd => (dd.source.id == d.id || dd.target.id == d.id))
+                    .attr('stroke','red');
+
+          rectG.filter( dd => !(dd.x == d.index || dd.y == d.index)).attr('opacity',0.2);
+
+
+        })
+          .on('mouseout', d => {
+                  tooltip.transition().duration(500)
+                      .style('opacity', 0.0);
+                  node.attr('opacity','1');
+                  link.attr('stroke','#d0d0d0');
+                  rectG.attr('opacity',1);
+                  //rectG.attr('opacity', dd =>  d.publications == 0 ?  1 : colorOpacity(dd.publications));
+            });
+
+
+
+      //颜色和值的图例
+      
+      const gradientLegendGroup = matrix.append('g')
+                  .attr('transform',`translate(${innerWidth},${margin.top+40})`);
+      const linearGradient = gradientLegendGroup.append('defs').append('linearGradient')
+      .attr('id','legend')
+      .attr('x1','0%')
+      .attr('y1','0%')
+      .attr('x2','100%')
+      .attr('y2','0%');
+      
+      const stop1 = linearGradient.append('stop')
+      .attr('offset','0%')
+      .style('stop-color',whiteColor);
+      //.attr('stop-opacity',0.1);
+      const stop2 = linearGradient.append('stop')
+      .attr('offset','100%')
+      .style('stop-color',greenColor)
+      .attr('stop-opacity',1);
+      
+      const colorRect = gradientLegendGroup.append('rect')
+      .attr('x',10)
+      .attr('y',10)
+      .attr('width',150)
+      .attr('height',10)
+      .attr('stroke','black')
+      .style("fill","url(#" + linearGradient.attr("id") + ")")
+      .attr('transform','rotate(-90)')
+
+
+      const gradientLegendScale = d3.scaleLinear()
+                .domain([0, d3.max(edgeData, d=>d.publications.length)])
+                .range([0, 150]);
+      const gradientLegendAxis = d3.axisBottom()
+          .scale(gradientLegendScale)
+          .ticks(6);
+      gradientLegendGroup.append('g')
+          .attr('class', 'gradient legend axis')
+          .attr('transform', 'translate(20, -9.5) rotate(-90)')
+          .call(gradientLegendAxis)
+          .append('text')
+          //.attr('transform', '')
+          .attr('y', 0)
+          .attr('dy', '.71em')
+          .style('text-anchor', 'end')
+          .text('axis title');
+
+
+
+});
+
+//starts a new pointer.
+//fx,fy是为某个节点设置默认位置
+//在每次tick完成后。node.x设置成fx。在设置完成后fx会被定义为null
+function dragstarted() {
+  if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+  d3.event.subject.fx = d3.event.subject.x;
+  d3.event.subject.fy = d3.event.subject.y;
+}
+//drags an active pointer
+function dragged() {
+  d3.event.subject.fx = d3.event.x;
+  d3.event.subject.fy = d3.event.y;
+}
+//Inactive an active pointer.
+function dragended() {
+  if (!d3.event.active) simulation.alphaTarget(0);
+  d3.event.subject.fx = null;
+  d3.event.subject.fy = null;
+}
+//subject 当前正在呗拖拽的东西。鼠标按下或者开始触摸等在拖拽开始之前。然后 subject 作为event.subject被附加到drag events上。
+
+function drawLink(d) {
+  context.moveTo(d.source.x, d.source.y);//Moves the starting point of a new sub-path to the (x, y) coordinates.
+  context.lineTo(d.target.x, d.target.y);//Connects the last point in the current sub-path to the specified (x, y) coordinates with a straight line.
+}
+
+function drawNode(d) {
+  context.moveTo(d.x +3, d.y);//半径为3
+  context.arc(d.x, d.y, 3, 0, 2 * Math.PI); //Adds a circular arc to the current path.x, y, radius, startAngle, endAngle, anticlockwise
+}
+
+</script>
+</body>
+</html>
